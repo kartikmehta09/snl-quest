@@ -277,9 +277,11 @@ class DataManager(EventDispatcher):
         """Scans the NYISO data bank."""
         nyiso_root = os.path.join(self.data_bank_root, 'NYISO')
         nyiso_data_bank = {}
-        nyiso_nodes = self.get_nodes('NYISO')
 
-        LBMP_ASP = ['LBMP', 'ASP']
+        # LBMP scan.
+        # nyiso_nodes = self.get_nodes('NYISO')
+
+        # LBMP_ASP = ['LBMP', 'ASP']
 
         # for casedata in LBMP_ASP:
         #     print('TBF')
@@ -294,38 +296,75 @@ class DataManager(EventDispatcher):
         #     for node in nyiso_nodes.keys():
         #         nyiso_data_bank['LBMP'][node] = {}
 
-
-        # LBMP scan.
         if 'LBMP' in os.listdir(nyiso_root):
             nyiso_data_bank['LBMP'] = {}
-            lbmp_dir = os.path.join(nyiso_root, 'LBMP', 'DAM', 'gen') # TODO: finalize the zone, gen thing
 
-            # Scan LBMP directory structure once.
-            nyiso_lbmp_dir_struct = {}
+            pathf_nodeszones = os.path.join('es_gui', 'apps', 'data_manager', '_static', 'nodes_nyiso.csv')
+            df_nodeszones = pd.read_csv(pathf_nodeszones, index_col=False)
 
-            for year_dir_entry in os.scandir(lbmp_dir):
-                if not year_dir_entry.name.startswith('.'):
-                    year = year_dir_entry.name
-                    year_dir = year_dir_entry.path
-                    nyiso_lbmp_dir_struct[year] = []
+            # Get zone and gen nodes.
+            df_zone_nodes = df_nodeszones.loc[df_nodeszones['Node ID'] == df_nodeszones['Zone ID'], :]
+            df_gen_nodes = df_nodeszones.loc[df_nodeszones['Node ID'] != df_nodeszones['Zone ID'], :]
 
-                    for month_dir_entry in os.scandir(year_dir):
-                        if not month_dir_entry.name.startswith('.'):
-                            month = month_dir_entry.name
-                            month_dir = month_dir_entry.path
+            # Gen nodes scan.
+            lbmp_dir = os.path.join(nyiso_root, 'LBMP', 'DAM', 'gen')
 
-                            # Get the number of days in the month and compare it to number of files in dir.
-                            _, n_days_month = calendar.monthrange(int(year), int(month))
-                            n_files = len([dir_entry for dir_entry in os.scandir(month_dir) if
-                                            not dir_entry.name.startswith('.')])
+            if os.path.exists(lbmp_dir):
+                nyiso_lbmp_gen_dir_struct = {}
 
-                            # Only add the month if it has a full set of data.
-                            if n_files == n_days_month:
-                                nyiso_lbmp_dir_struct[year].append(month)
+                for year_dir_entry in os.scandir(lbmp_dir):
+                    if not year_dir_entry.name.startswith('.'):
+                        year = year_dir_entry.name
+                        year_dir = year_dir_entry.path
+                        nyiso_lbmp_gen_dir_struct[year] = []
 
-            for node in nyiso_nodes.keys():
-                tmp_dir = copy.deepcopy(nyiso_lbmp_dir_struct)
-                nyiso_data_bank['LBMP'][node] = tmp_dir
+                        for month_dir_entry in os.scandir(year_dir):
+                            if not month_dir_entry.name.startswith('.'):
+                                month = month_dir_entry.name
+                                month_dir = month_dir_entry.path
+
+                                # Get the number of days in the month and compare it to number of files in dir.
+                                _, n_days_month = calendar.monthrange(int(year), int(month))
+                                n_files = len([dir_entry for dir_entry in os.scandir(month_dir) if
+                                                not dir_entry.name.startswith('.')])
+
+                                # Only add the month if it has a full set of data.
+                                if n_files == n_days_month:
+                                    nyiso_lbmp_gen_dir_struct[year].append(month)
+
+                for node_id in df_gen_nodes['Node ID']:
+                    tmp_dir = copy.deepcopy(nyiso_lbmp_gen_dir_struct)
+                    nyiso_data_bank['LBMP'][node_id] = tmp_dir
+            
+            # Zone nodes scan.
+            lbmp_dir = os.path.join(nyiso_root, 'LBMP', 'DAM', 'zone')
+
+            if os.path.exists(lbmp_dir):
+                nyiso_lbmp_zone_dir_struct = {}
+
+                for year_dir_entry in os.scandir(lbmp_dir):
+                    if not year_dir_entry.name.startswith('.'):
+                        year = year_dir_entry.name
+                        year_dir = year_dir_entry.path
+                        nyiso_lbmp_zone_dir_struct[year] = []
+
+                        for month_dir_entry in os.scandir(year_dir):
+                            if not month_dir_entry.name.startswith('.'):
+                                month = month_dir_entry.name
+                                month_dir = month_dir_entry.path
+
+                                # Get the number of days in the month and compare it to number of files in dir.
+                                _, n_days_month = calendar.monthrange(int(year), int(month))
+                                n_files = len([dir_entry for dir_entry in os.scandir(month_dir) if
+                                                not dir_entry.name.startswith('.')])
+
+                                # Only add the month if it has a full set of data.
+                                if n_files == n_days_month:
+                                    nyiso_lbmp_zone_dir_struct[year].append(month)
+
+                for node_id in df_zone_nodes['Node ID']:
+                    tmp_dir = copy.deepcopy(nyiso_lbmp_zone_dir_struct)
+                    nyiso_data_bank['LBMP'][node_id] = tmp_dir
 
         # ASP scan.
         if 'ASP' in os.listdir(nyiso_root):
@@ -367,11 +406,11 @@ class DataManager(EventDispatcher):
             # Reads static node ID list.
             static_pjm_node_list = os.path.join('es_gui', 'apps', 'data_manager', '_static', 'nodes_pjm.csv')
             node_df = pd.read_csv(static_pjm_node_list)
-            node_dict = {str(row[0]): '{nodename} ({nodeid})'.format(nodename=row[1], nodeid=row[0]) for row in zip(node_df['Node ID'], node_df['Node Name'])}
+            node_mapping = {str(row[0]): '{nodename} ({nodeid})'.format(nodename=row[1], nodeid=row[0]) for row in zip(node_df['Node ID'], node_df['Node Name'])}
 
             # Reads keys of PJM LMP data bank.
             node_id_list = self.data_bank['PJM']['LMP'].keys()
-            node_dict = {node_id: node_dict.get(node_id, node_id) for node_id in node_id_list}
+            node_dict = {node_id: node_mapping.get(node_id, node_id) for node_id in node_id_list}
         elif market_area == 'MISO':
             # Reads static node ID list.
             static_miso_node_list = os.path.join('es_gui', 'apps', 'data_manager', '_static', 'nodes_miso.csv')
@@ -382,11 +421,16 @@ class DataManager(EventDispatcher):
         elif market_area == 'NYISO':
             # Reads static node ID list.
             static_nyiso_node_list = os.path.join('es_gui', 'apps', 'data_manager', '_static', 'nodes_nyiso.csv')
-
             node_df = pd.read_csv(static_nyiso_node_list)
-            node_dict = {row[0]: row[1] for row in zip(node_df['Node ID'], node_df['Node Name'])}
+            node_mapping = {row[0]: row[1] for row in zip(node_df['Node ID'], node_df['Node Name'])}
+
+            # Reads keys of NYISO LBMP data bank.
+            node_id_list = self.data_bank['NYISO']['LBMP'].keys()
+            node_dict = {node_id: node_mapping.get(node_id, node_id) for node_id in node_id_list}
         ################################################################################################################
-        # Use the PJM pattern of reading data_bank node keys to generate the node_dict (key = value) if no CSV LUT exists.
+        # Use this pattern of reading data_bank node keys to generate the node_dict (key = value) if no CSV LUT exists:
+        # node_id_list = self.data_bank['xyz']['LMP'].keys()
+        # node_dict = {node_id: node_id) for node_id in node_id_list}
         else:
             raise(DataManagerException('Invalid market_area given (got {0})'.format(market_area)))
         
